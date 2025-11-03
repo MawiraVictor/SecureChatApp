@@ -4,13 +4,11 @@ import json
 import struct
 import sqlite3 
 import bcrypt
-import traceback
 from base64 import b64encode,b64decode
 
 
 from Crypto.PublicKey import RSA
-from Crypto.Cipher import PKCS1_OAEP, AES
-from Crypto.Util.Padding import pad,unpad
+from Crypto.Cipher import PKCS1_OAEP
 
 class Server():
     def __init__(self):
@@ -76,7 +74,6 @@ class Server():
             print("Client disconnected")
         except Exception as e:
             print(f"Got error starting server: {e}")
-            traceback.print_exc()
         finally:
             self.server_sock.close()
 
@@ -220,7 +217,8 @@ class Server():
                     "command" : "recv_message",
                     "peername": sender,
                     "message": data["message"],
-                    "iv"    : data["iv"]
+                    "iv"    : data["iv"],
+                    "mac"   : data["mac"]
                 }
 
                 self.send_to_client(client.connection, message)

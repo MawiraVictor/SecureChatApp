@@ -9,6 +9,7 @@ import Crypto
 from Crypto.PublicKey import RSA
 from Crypto.Util.Padding import pad,unpad
 from Crypto.Cipher import PKCS1_OAEP, AES
+from Crypto.Hash import HMAC, SHA256
 
 
 class Client():
@@ -154,7 +155,7 @@ class Client():
                 if not session_key_b64:
                     # if no session key yet first generate and send it
                     self.send_session_key(peer)
-                    # wait for 2 seconds
+                    # wait for 2 seconds for key exchange
                     time.sleep(2)
                     session_key_b64 = peer.session_key
                 break 
@@ -171,16 +172,23 @@ class Client():
 
         encrypted_message_bytes = cipher_aes.encrypt(pad(message, AES.block_size)) 
 
-        #convert iv and cipher text to base64 for proper transmission
-        iv = b64encode(cipher_aes.iv).decode("utf-8")
-        encrypted_message = b64encode(encrypted_message_bytes).decode("utf-8")
+        #generatte HMAC authentication code for iv and encrypted_message
+        hmac_obj = HMAC.new(session_key_bytes, digestmod=SHA256)
+        hmac_obj.update(cipher_aes.iv + encrypted_message_bytes)
+        mac_bytes = hmac_obj.digest() 
+        
+        #convert iv and cipher text, mac to base64 for proper transmission
+        b64_iv = b64encode(cipher_aes.iv).decode("utf-8")
+        b64_encrypted_message = b64encode(encrypted_message_bytes).decode("utf-8")
+        b64_mac_bytes = b64encode(mac_bytes).decode("utf-8")
 
         data = {
             "command": "send_message",
             "username": self.username,
             "peername": peer_username,
-            "message": encrypted_message,
-            "iv":      iv,
+            "message": b64_encrypted_message,
+            "iv":      b64_iv,
+            "mac":    b64_mac_bytes
         }
 
         self.send_to_server(data)
@@ -272,7 +280,7 @@ class Client():
             self.send_to_gui("add_active_user", peer["username"])
 
 
-        self.send_to_gui("show_chat", None)
+        self.send_to_gui("show_chat", self.username)
         return True
 
     def handle_new_peer(self, data: dict):
@@ -298,11 +306,13 @@ class Client():
     def receive_message(self, data:dict):
         iv = data["iv"]
         message = data["message"]
+        mac = data["mac"]
         peer_name = data["peername"]
 
-        #convert from base64 which return bytes
+        #convert message, iv and mac from base64 which return bytes
         encrypted_message = b64decode(message)
         iv = b64decode(iv)
+        mac = b64decode(mac)
 
         #find peer_name's sesssion_key
         session_key = None
@@ -319,16 +329,24 @@ class Client():
         #convert base64 session key back to bytes
         session_key_bytes = b64decode(session_key)
 
-        #decrypting data using session_key
-        cipher_aes = AES.new(key=session_key_bytes, mode=AES.MODE_CBC, iv=iv)
+        try:
+            #verification of message using mac
+            hmac_obj = HMAC.new(session_key_bytes, digestmod=SHA256)
+            hmac_obj.update(iv + encrypted_message)
+            hmac_obj.verify(mac)
 
-        padded_decrypted_message = cipher_aes.decrypt(encrypted_message)
-        #remove padding added
-        decrypted_message = unpad(padded_decrypted_message, AES.block_size)
+            #decrypting data using session_key
+            cipher_aes = AES.new(key=session_key_bytes, mode=AES.MODE_CBC, iv=iv)
 
-        print(f"Message from {peer_name}: {decrypted_message}")
+            padded_decrypted_message = cipher_aes.decrypt(encrypted_message)
+            #remove padding added
+            decrypted_message = unpad(padded_decrypted_message, AES.block_size)
 
-        self.send_to_gui("display_message", (peer_name, decrypted_message.decode("utf-8")))
+            print(f"Message from {peer_name}: {decrypted_message}")
+
+            self.send_to_gui("display_message", (peer_name, decrypted_message.decode("utf-8")))
+        except ValueError:
+            print("ERROR: Message integrity check failed or could not decrypt.")
 
 
     def receive_session_key(self, data:dict) -> bool:

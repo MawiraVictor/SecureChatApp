@@ -58,6 +58,7 @@ class SecureChatApp:
         """Display chat page."""
         self.login_frame.frame.pack_forget()
         self.signup_frame.frame.pack_forget()
+        self.root.title(f"Secure Chat - {self.username}")
         self.chat_frame.frame.pack(fill=tk.BOTH, expand=True)
 
     def login(self, username):
@@ -79,7 +80,7 @@ class SecureChatApp:
         match command:
             case "show_chat":
                 try:
-                    self.root.after(0, lambda: self.login("TestUser"))
+                    self.root.after(0, lambda: self.login(data))
                 except Exception as e:
                     print(f"Error in after: {e}")
             case "show_auth_error":
