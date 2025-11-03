@@ -253,9 +253,9 @@ class DB():
     def add_user(self, username, password) -> bool:
         if self.user_exists(username):
             return False
-        query = "INSERT INTO users(username, password_hash, public_key) VALUES(?, ?, ?)"
+        query = "INSERT INTO users(username, password_hash) VALUES(?, ?)"
         hashed_pass = self.hash_password(password);
-        self.cursor.execute(query, (username, hashed_pass, "samplepubkey"))
+        self.cursor.execute(query, (username, hashed_pass))
         self.conn.commit()
         return True
 
